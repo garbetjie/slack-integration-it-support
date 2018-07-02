@@ -6,46 +6,28 @@ const VERIFICATION_TOKEN = process.env.VERIFICATION_TOKEN;
 const DESTINATION_CHANNEL = process.env.DESTINATION_CHANNEL;
 
 const slack = new (require('@slack/client').WebClient)(BOT_TOKEN);
-const bodyParser = require('body-parser');
-const express = require('express');
 const https = require('https');
 const url = require('url');
 const util = require('util');
-const app = express();
-
-// Set up middleware.
-app.use(bodyParser.urlencoded({extended: false}));
-app.use(express.query());
-app.use(bodyParser.json());
-app.use(
-    (req, res, next) => {
-        if (! req.body || ! ('payload' in req.body)) {
-            return next();
-        }
-
-        // Extract the "payload" property.
-        req.body = JSON.parse(req.body.payload);
-
-        if (! req.body.token || req.body.token !== VERIFICATION_TOKEN) {
-            return res.status(400).send('Bad token.');
-        }
-
-        next();
-    }
-);
 
 
 // incoming dialog response.
-app.post('/slack', async (req, res) => {
-    console.log('request body', req.body);
+exports.main = (req, res) => {
+    const body = parseRequestBodyPayload(req);
+
+    if (!body) {
+        return res.status(400).end('Bad input.');
+    }
+
+    console.log('request body', body);
     res.end();
 
     // Handle dialog submission.
-    if ('type' in req.body) {
+    if ('type' in body) {
         let color = undefined;
         let urgency = '';
 
-        switch(req.body.submission.urgency) {
+        switch(body.submission.urgency) {
             case 'low':
                 color = '#7ED17E';
                 urgency = '[Urgency: Low]';
@@ -64,9 +46,9 @@ app.post('/slack', async (req, res) => {
             attachments: [
                 {
                     color,
-                    title: req.body.submission.summary,
-                    pretext: `IT support request opened by <@${req.body.user.id}> ${urgency}`,
-                    text: req.body.submission.description,
+                    title: body.submission.summary,
+                    pretext: `IT support request opened by <@${body.user.id}> ${urgency}`,
+                    text: body.submission.description,
                 }
             ]
         }).then(
@@ -74,7 +56,7 @@ app.post('/slack', async (req, res) => {
             (e) => {
                 console.error('unable to send IT support message', e);
 
-                buildRequestForResponse(req.body.response_url).end(
+                buildRequestForResponse(body.response_url).end(
                     JSON.stringify({
                         text: `Oh dear. Your IT support request couldn't be sent. Please try again.`,
                         response_type: 'ephemeral'
@@ -87,7 +69,7 @@ app.post('/slack', async (req, res) => {
     // Handle display of dialog.
     else {
         slack.dialog.open({
-            trigger_id: req.body.trigger_id,
+            trigger_id: body.trigger_id,
             dialog: {
                 callback_id: 'submit',
                 title: 'Request IT Support',
@@ -135,7 +117,7 @@ app.post('/slack', async (req, res) => {
             (e) => {
                 console.error('cannot submit dialog', util.inspect(e, {depth:4}));
 
-                buildRequestForResponse(req.body.response_url).end(
+                buildRequestForResponse(body.response_url).end(
                     JSON.stringify({
                         text: `Oh dear. Your IT support request couldn't be sent. Please try again.`,
                         response_type: 'ephemeral'
@@ -144,11 +126,7 @@ app.post('/slack', async (req, res) => {
             }
         );
     }
-});
-
-
-// Start listening.
-app.listen(3000);
+};
 
 
 /**
@@ -174,4 +152,19 @@ function buildRequestForResponse(responseUrl) {
     // });
 
     return request;
+}
+
+function parseRequestBodyPayload(req) {
+    if (! req.body || ! ('payload' in req.body)) {
+        return req.body;
+    }
+
+    // Extract the "payload" property.
+    const body = JSON.parse(req.body.payload);
+
+    if (! body.token || body.token !== VERIFICATION_TOKEN) {
+        return undefined;
+    }
+
+    return body;
 }
