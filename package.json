@@ -10,6 +10,6 @@
   },
   "scripts": {
     "tunnel": "lt -s garbetjie --port 3000 --print-requests",
-    "server": "node $NODE_DEBUG_OPTION ./server.js"
+    "server": "node $NODE_DEBUG_OPTION ./index.js"
   }
 }
